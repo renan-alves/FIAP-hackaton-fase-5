@@ -1,0 +1,12 @@
+services:
+  ai-module:
+    image: ai-module:latest
+    build:
+      context: ..
+      dockerfile: ./infra/Dockerfile
+    env_file:
+      - ../ai_module/.env
+    command: ["sh", "-c", "uv run python -m pip install --no-cache-dir debugpy -t /tmp && uv run python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 -m uvicorn ai_module.main:app --host 0.0.0.0 --port 8000 --reload"]
+    ports:
+      - "8000:8000"
+      - "5678:5678"

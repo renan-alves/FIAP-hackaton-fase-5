@@ -1,0 +1,10 @@
+services:
+  ai-module:
+    image: ai-module:latest
+    build:
+      context: ..
+      dockerfile: ./infra/Dockerfile
+    env_file:
+      - ../ai_module/.env
+    ports:
+      - "8000:8000"
