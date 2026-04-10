@@ -25,8 +25,11 @@ from ai_module.core.settings import settings
 from ai_module.models.report import AnalyzeResponse, Report, ReportMetadata
 
 logger = get_logger(__name__, level=settings.LOG_LEVEL)
+
 _PROVIDER = settings.LLM_PROVIDER.upper()
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _truncate_for_log(value: str, limit: int = 500) -> str:
     """Compact and truncate a string for safe inclusion in structured log entries.
@@ -45,11 +48,9 @@ def _truncate_for_log(value: str, limit: int = 500) -> str:
     -------
     str
         Single-line string of at most ``limit + 3`` characters.
-    """
-    compact_value = value.replace("\n", "\\n").replace("\r", "\\r")
-    if len(compact_value) <= limit:
-        return compact_value
-    return compact_value[:limit] + "..."
+    """ 
+    compact = value.replace("\n", "\\n").replace("\r", "\\r")
+    return compact[:limit] + "..." if len(compact) > limit else compact
 
 
 def _file_signature_hex(file_bytes: bytes, limit: int = 16) -> str:
@@ -72,6 +73,110 @@ def _file_signature_hex(file_bytes: bytes, limit: int = 16) -> str:
     """
     return file_bytes[:limit].hex()
 
+
+def _classify_validation_error(error: str) -> str:
+    """Map a validation error message to a targeted correction instruction.
+
+    Parameters
+    ----------
+    error : str
+        Validation error string returned by ``validate_and_normalize``.
+
+    Returns
+    -------
+    str
+        Human-readable correction instruction to embed in the next
+        LLM prompt so the model can self-correct the specific issue.
+    """
+    if "JSON_PARSE_ERROR" in error:
+        return (
+            "Your response was not valid JSON. "
+            "Return ONLY the raw JSON object, no markdown, no extra text."
+        )
+    if "components" in error:
+        return (
+            "The 'components' field is missing or empty. "
+            "You MUST identify at least one component visible in the diagram."
+        )
+    if "summary" in error:
+        return (
+            "The 'summary' field is missing or exceeds 500 characters. "
+            "Provide a concise summary of at most 500 characters."
+        )
+    if "severity" in error:
+        return "Use only 'high', 'medium', or 'low' for risk severity."
+    if "priority" in error:
+        return "Use only 'high', 'medium', or 'low' for recommendation priority."
+    if "SCHEMA_ERROR" in error:
+        return (
+            f"Schema validation failed: {error}. "
+            "Fix only the invalid fields and return the complete JSON."
+        )
+    return f"Fix the invalid response. Error: {error}"
+
+
+# ── Semantic consistency guardrail ────────────────────────────────────────────
+
+def _apply_semantic_guardrails(report: Report, analysis_id: str) -> Report:
+    """Validate and repair cross-section consistency of the report.
+
+    Rules applied:
+
+    1. ``Risk.affected_components`` must only reference known component names.
+       Unknown references are silently removed (LLM hallucination guard).
+    2. Summary should mention at least one identified component.
+       If it does not, a ``WARNING`` is logged but the report is not rejected
+       because the LLM may use synonyms or abbreviations.
+
+    Parameters
+    ----------
+    report : Report
+        Validated report to inspect and repair in place.
+    analysis_id : str
+        Correlation identifier for structured logs.
+
+    Returns
+    -------
+    Report
+        The same report object with hallucinated component references removed.
+    """
+    component_names = {c.name for c in report.components}
+
+    for risk in report.risks:
+        unknown_refs = set(risk.affected_components) - component_names
+        if unknown_refs:
+            logger.warning(
+                "Risk references unknown components — removing hallucinated refs",
+                extra={
+                    "event": "semantic_guardrail_component_ref",
+                    "analysis_id": analysis_id,
+                    "details": {
+                        "risk_title": risk.title,
+                        "unknown_refs": list(unknown_refs),
+                        "known_components": list(component_names),
+                    },
+                },
+            )
+            risk.affected_components = [
+                c for c in risk.affected_components if c in component_names
+            ]
+
+    summary_lower = report.summary.lower()
+    mentioned = any(c.name.lower() in summary_lower for c in report.components)
+    if not mentioned:
+        logger.warning(
+            "Summary does not mention any identified component — possible hallucination",
+            extra={
+                "event": "semantic_guardrail_summary_mismatch",
+                "analysis_id": analysis_id,
+                "details": {"component_names": list(component_names)},
+            },
+        )
+
+    return report
+
+
+# ── Pipeline steps ────────────────────────────────────────────────────────────
 
 def _step_preprocess(
     file_bytes: bytes,
@@ -286,11 +391,7 @@ async def _step_call_llm(
     return raw
 
 
-def _step_validate(
-    raw: str,
-    analysis_id: str,
-    attempt: int,
-) -> tuple[Report, dict]:
+def _step_validate(raw: str, analysis_id: str, attempt: int) -> tuple[Report, dict]:
     """Parse and validate the raw LLM response into a ``Report``.
 
     Delegates to :func:`~ai_module.core.report_validator.validate_and_normalize`
@@ -397,15 +498,16 @@ async def _step_retry_loop(
 
     for attempt in range(1, settings.LLM_MAX_RETRIES + 1):
         if attempt > 1 and last_raw and last_error:
-            current_prompt = build_correction_prompt(last_raw, last_error)
+            targeted_instruction = _classify_validation_error(last_error)
+            current_prompt = build_correction_prompt(last_raw, targeted_instruction)
             logger.info(
-                "Prepared correction prompt",
+                "Prepared targeted correction prompt",
                 extra={
                     "event": "correction_prompt_built",
                     "analysis_id": analysis_id,
                     "details": {
                         "attempt": attempt,
-                        "previous_error": _truncate_for_log(last_error, limit=300),
+                        "error_class": targeted_instruction[:80],
                     },
                 },
             )
@@ -424,6 +526,7 @@ async def _step_retry_loop(
             last_error = str(e)
             continue
 
+        report = _apply_semantic_guardrails(report, analysis_id)
         successful_attempt = attempt
         break
 
@@ -484,6 +587,8 @@ def _build_response(
     )
 
 
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+
 async def run_pipeline(
     file_bytes: bytes,
     filename: str,
@@ -528,7 +633,7 @@ async def run_pipeline(
             "details": {
                 "filename": filename,
                 "file_size_bytes": len(file_bytes),
-                "provider": settings.LLM_PROVIDER,
+                "provider": _PROVIDER,
                 "model": settings.LLM_MODEL,
             },
         },
@@ -537,7 +642,7 @@ async def run_pipeline(
 
     image_bytes, input_type = _step_preprocess(file_bytes, filename, analysis_id)
     system_prompt, user_prompt = _step_build_prompts(image_bytes, analysis_id)
-    report, _metadata_flags, successful_attempt = await _step_retry_loop(
+    report, _flags, successful_attempt = await _step_retry_loop(
         adapter, image_bytes, system_prompt, user_prompt, analysis_id,
     )
 
@@ -546,15 +651,13 @@ async def run_pipeline(
 
     total_ms = int((time.monotonic() - total_start) * 1000)
     metrics.processing_time_ms_total += total_ms
+
     logger.info(
         "Analysis completed successfully",
         extra={
             "event": "analysis_success",
             "analysis_id": analysis_id,
-            "details": {
-                "total_time_ms": total_ms,
-                "input_type": input_type,
-            },
+            "details": {"total_time_ms": total_ms, "input_type": input_type},
         },
     )
 

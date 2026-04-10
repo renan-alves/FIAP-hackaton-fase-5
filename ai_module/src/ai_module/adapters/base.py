@@ -10,10 +10,10 @@ class LLMAdapter(ABC):
 
     @abstractmethod
     async def analyze(self, image_bytes: bytes, prompt: str, system_prompt: str) -> str:
-        """Send an image and prompt to the LLM provider and return the raw response.
+        """Envie uma imagem e uma solicitação ao provedor de LLM e retorne a resposta bruta.
 
-        Raises:
-            LLMTimeoutError: if the call exceeds the configured timeout.
-            LLMCallError: on SDK or provider failure.
+        Gera os seguintes erros:
+            LLMTimeoutError: se a chamada exceder o tempo limite configurado.
+            LLMCallError: em caso de falha do SDK ou do provedor.
         """
         ...
