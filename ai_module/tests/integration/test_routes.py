@@ -199,3 +199,25 @@ def test_analyze_context_text_over_1000_returns_422(
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+def test_analyze_non_uuid_analysis_id_is_accepted(
+    client: TestClient,
+    png_bytes: bytes,
+    mock_adapter: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per GUD-006: analysis_id is a plain string — any format must be accepted."""
+    monkeypatch.setitem(app.dependency_overrides, get_llm_adapter, lambda: mock_adapter)
+
+    for analysis_id in ("plain-string-id", "12345", "order-abc-XYZ"):
+        response = client.post(
+            "/analyze",
+            data={"analysis_id": analysis_id},
+            files={"file": ("img.png", png_bytes, "image/png")},
+        )
+
+        assert response.status_code == status.HTTP_200_OK, (
+            f"Expected 200 for analysis_id={analysis_id!r}, got {response.status_code}"
+        )
+        assert response.json()["analysis_id"] == analysis_id

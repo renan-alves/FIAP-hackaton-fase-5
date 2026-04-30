@@ -1,14 +1,13 @@
 """Request validation models for the analysis endpoint.
 
-This module defines the input schema for the /analyze endpoint,
-ensuring strict validation of the analysis identifier.
+This module defines the input schema for the /analyze endpoint.
+Per GUD-006, analysis_id is accepted as a plain string — format
+validation is delegated to the orchestrator (SOAT).
 """
 
 from __future__ import annotations
 
-import uuid
-
-from pydantic import UUID4, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AnalyzeRequest(BaseModel):
@@ -16,25 +15,14 @@ class AnalyzeRequest(BaseModel):
 
     Parameters
     ----------
-    analysis_id : UUID4
-        Identificador único desta requisição de análise.
-        Deve estar no formato UUID v4 válido.
+    analysis_id : str
+        Identificador rastreável fornecido pelo orquestrador.
+        Aceito como string pura — validação de formato delegada ao SOAT (GUD-006).
+    context_text : str | None
+        Texto de contexto opcional. Máximo de 1000 caracteres.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    analysis_id: str = Field(..., description="UUID da análise")
+    analysis_id: str = Field(..., description="Identificador da análise")
     context_text: str | None = Field(default=None, max_length=1000)
-
-    @field_validator("analysis_id")
-    @classmethod
-    def validate_uuid(cls, v: str) -> str:
-        """Valida se o analysis_id é um UUID4 válido."""
-        try:
-            uuid_obj = uuid.UUID(v, version=4)
-            return str(uuid_obj)
-        except ValueError:
-            raise ValueError("analysis_id must be a valid UUID4 string")
-        return v
-    
-    

@@ -1,7 +1,10 @@
 """Pydantic models for architecture analysis reports.
 
-The models in this module follow the report contract defined in `specs/spec.md`.
+The models in this module follow the report contract defined in `specs/spec.md` v2.1.
 All models reject unknown fields (`extra="forbid"`) and enforce strict enums.
+
+Breaking change (v2.1): ``AnalyzeResponse`` now wraps report fields inside a nested
+``report`` object instead of exposing them at the top level.
 """
 
 from __future__ import annotations
@@ -113,6 +116,7 @@ class ReportMetadata(StrictModel):
     input_type: Literal["image", "pdf"]
     context_text_provided: bool = False
     context_text_length: int = Field(default=0, ge=0)
+    downsampling_applied: bool = False
     conflict_detected: bool = False
     conflict_decision: str = "NO_CONFLICT"
     conflict_policy: str = "DIAGRAM_FIRST"
@@ -130,13 +134,13 @@ class BaseResponse(StrictModel):
 
 
 class AnalyzeResponse(BaseResponse):
-    """Contrato de resposta de sucesso para POST /analyze."""
+    """Contrato de resposta de sucesso para POST /analyze per spec v2.1.
+
+    O relatório é retornado como objeto aninhado ``report`` em vez de campos planos.
+    """
 
     status: Literal["success"] = "success"
-    summary: SummaryStr
-    components: list[Component] = Field(min_length=1)
-    risks: list[Risk] = Field(default_factory=list)
-    recommendations: list[Recommendation] = Field(default_factory=list)
+    report: Report
     metadata: ReportMetadata
 
 
@@ -146,6 +150,3 @@ class ErrorResponse(BaseResponse):
     status: Literal["error"] = "error"
     error_code: ErrorCodeStr
     message: NonEmptyStr
-
-
-

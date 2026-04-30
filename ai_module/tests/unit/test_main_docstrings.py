@@ -8,8 +8,7 @@ EXPECTED_DOCSTRINGS = {
     "__module__": "Ponto de entrada da aplicação FastAPI.",
     "lifespan": "Gerencia o ciclo de vida de inicialização e encerramento da aplicação.",
     "_get_analysis_id": (
-        "Obtém o identificador da análise a partir do estado da requisição "
-        "ou dos cabeçalhos."
+        "Obtém o identificador da análise a partir do estado da requisição ou dos cabeçalhos."
     ),
     "security_headers": "Adiciona cabeçalhos de segurança a todas as respostas HTTP.",
     "unsupported_format_handler": (

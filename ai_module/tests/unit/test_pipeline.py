@@ -22,7 +22,7 @@ async def test_run_pipeline_returns_analyze_response(
     assert response.analysis_id == "analysis-123"
     assert response.status == "success"
     assert response.metadata.input_type == "image"
-    assert response.components[0].name == "api-service"
+    assert response.report.components[0].name == "api-service"
 
 
 @pytest.mark.asyncio

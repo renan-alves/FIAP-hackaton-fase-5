@@ -117,7 +117,7 @@ Crie o arquivo ai_module/.env a partir de [ai_module/.env-exemplo](ai_module/.en
 ## Key Features
 
 - Suporte a PNG, JPG, JPEG e PDF
-- Conversão da primeira página de PDF para imagem normalizada
+- Conversão das primeiras 3 páginas de PDF para imagens normalizadas
 - Pipeline com provedor LLM configurável (Gemini/OpenAI)
 - Validação de saída contra schema rígido
 - Guardrails de entrada e saída

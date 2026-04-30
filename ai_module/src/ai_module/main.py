@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "app_version": settings.APP_VERSION,
                 "log_level": settings.LOG_LEVEL,
                 "llm_provider": settings.LLM_PROVIDER,
-            }
+            },
         },
     )
 
@@ -202,7 +202,7 @@ async def timeout_handler(request: Request, exc: AITimeoutError) -> JSONResponse
         content=ErrorResponse(
             analysis_id=_get_analysis_id(request),
             status="error",
-            error_code="AI_FAILURE",
+            error_code="AI_TIMEOUT",
             message=exc.message,
         ).model_dump(),
     )

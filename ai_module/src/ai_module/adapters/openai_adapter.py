@@ -51,7 +51,9 @@ class OpenAIAdapter(LLMAdapter):
                 raise LLMCallError("OpenAI retornou uma resposta vazia.")
             if isinstance(content, list):
                 content = "".join(
-                    item.text for item in content if hasattr(item, "text") and item.text # pyright: ignore[reportAttributeAccessIssue]
+                    item.text
+                    for item in content
+                    if hasattr(item, "text") and item.text  # pyright: ignore[reportAttributeAccessIssue]
                 )
             if not content:
                 raise LLMCallError("OpenAI retornou uma resposta vazia.")

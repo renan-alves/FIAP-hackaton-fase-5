@@ -86,7 +86,7 @@ def test_analyze_returns_504_when_llm_times_out(client: TestClient, png_bytes: b
     assert response.status_code == 504
     body = response.json()
     assert body["status"] == "error"
-    assert body["error_code"] == "AI_FAILURE"
+    assert body["error_code"] == "AI_TIMEOUT"
 
 
 def test_analyze_response_does_not_contain_raw_llm_string(
