@@ -30,8 +30,8 @@ def test_analyze_png_returns_success(
     body = response.json()
     assert body["analysis_id"] == "img-test-01"
     assert body["status"] == "success"
-    assert isinstance(body["summary"], str)
-    assert len(body["summary"]) > 0
+    assert isinstance(body["report"]["summary"], str)
+    assert len(body["report"]["summary"]) > 0
 
 
 def test_analyze_jpeg_returns_success(
@@ -70,9 +70,9 @@ def test_analyze_image_response_contains_components(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert isinstance(body["components"], list)
-    assert len(body["components"]) > 0
-    component = body["components"][0]
+    assert isinstance(body["report"]["components"], list)
+    assert len(body["report"]["components"]) > 0
+    component = body["report"]["components"][0]
     assert "name" in component
     assert "type" in component
 
@@ -93,9 +93,9 @@ def test_analyze_image_response_contains_risks(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert isinstance(body["risks"], list)
-    assert len(body["risks"]) > 0
-    risk = body["risks"][0]
+    assert isinstance(body["report"]["risks"], list)
+    assert len(body["report"]["risks"]) > 0
+    risk = body["report"]["risks"][0]
     assert "title" in risk
     assert "severity" in risk
 
@@ -116,9 +116,9 @@ def test_analyze_image_response_contains_recommendations(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert isinstance(body["recommendations"], list)
-    assert len(body["recommendations"]) > 0
-    rec = body["recommendations"][0]
+    assert isinstance(body["report"]["recommendations"], list)
+    assert len(body["report"]["recommendations"]) > 0
+    rec = body["report"]["recommendations"][0]
     assert "title" in rec
     assert "priority" in rec
 

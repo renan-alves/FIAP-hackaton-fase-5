@@ -44,6 +44,7 @@ class AnalysisMetadata:
     conflict_decision: str = "NO_CONFLICT"
     conflict_policy: str = "DIAGRAM_FIRST"
 
+
 @dataclass
 class AnalysisResult:
     analysis_id: str
@@ -52,7 +53,8 @@ class AnalysisResult:
     metadata: AnalysisMetadata | None = None
     error_code: str | None = None
     message: str | None = None
-    
+
+
 async def run_pipeline(
     file_bytes: bytes,
     filename: str,
@@ -647,19 +649,16 @@ def _build_response(
     return AnalyzeResponse(
         analysis_id=analysis_id,
         status="success",
-        summary=report.summary,
-        components=report.components,
-        risks=report.risks,
-        recommendations=report.recommendations,
+        report=report,
         metadata=ReportMetadata(
             model_used=settings.LLM_MODEL,
             processing_time_ms=total_ms,
             input_type=input_type,  # type: ignore[arg-type]
             context_text_provided=bool(context_text),
             context_text_length=len(context_text or ""),
+            downsampling_applied=False,
             conflict_detected=conflict_detected,
             conflict_decision=conflict_decision,
             conflict_policy=settings.CONFLICT_POLICY,
         ),
     )
-

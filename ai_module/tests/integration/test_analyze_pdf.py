@@ -30,8 +30,8 @@ def test_analyze_pdf_returns_success(
     body = response.json()
     assert body["analysis_id"] == "pdf-test-01"
     assert body["status"] == "success"
-    assert isinstance(body["summary"], str)
-    assert len(body["summary"]) > 0
+    assert isinstance(body["report"]["summary"], str)
+    assert len(body["report"]["summary"]) > 0
 
 
 def test_analyze_pdf_metadata_input_type_is_pdf(
@@ -69,8 +69,8 @@ def test_analyze_pdf_response_contains_components(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert isinstance(body["components"], list)
-    assert len(body["components"]) > 0
+    assert isinstance(body["report"]["components"], list)
+    assert len(body["report"]["components"]) > 0
 
 
 def test_analyze_pdf_response_contains_risks(
@@ -89,8 +89,8 @@ def test_analyze_pdf_response_contains_risks(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert isinstance(body["risks"], list)
-    assert len(body["risks"]) > 0
+    assert isinstance(body["report"]["risks"], list)
+    assert len(body["report"]["risks"]) > 0
 
 
 def test_analyze_pdf_response_contains_recommendations(
@@ -109,8 +109,8 @@ def test_analyze_pdf_response_contains_recommendations(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert isinstance(body["recommendations"], list)
-    assert len(body["recommendations"]) > 0
+    assert isinstance(body["report"]["recommendations"], list)
+    assert len(body["report"]["recommendations"]) > 0
 
 
 def test_analyze_corrupted_pdf_returns_422(

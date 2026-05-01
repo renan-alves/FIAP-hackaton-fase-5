@@ -2,8 +2,6 @@
 .github/
 .gemini/
 .specify/
-specs/
-plan/
 CLAUDE.md
 GEMINI.md
 AGENT.md

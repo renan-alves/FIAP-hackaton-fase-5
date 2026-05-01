@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from ai_module.core.logger import get_logger
 from ai_module.core.settings import settings
@@ -20,7 +20,7 @@ logger = get_logger(__name__, level=settings.LOG_LEVEL)
 def _normalize_component_type(value: str) -> str:
     """
     Normalize os valores do tipo de componente, atribuindo o valor ComponentType.
-    UNKNOWN aos desconhecidos. 
+    UNKNOWN aos desconhecidos.
     """
     valid_types = {e.value for e in ComponentType}
     return value if value in valid_types else ComponentType.UNKNOWN.value
@@ -40,6 +40,7 @@ def _normalize_priority(value: str) -> str:
     """
     valid_priorities = {e.value for e in Priority}
     return value if value in valid_priorities else Priority.MEDIUM.value
+
 
 def _normalize_raw(data: dict[str, Any]) -> dict[str, Any]:
     """Normaliza enums inválidos antes da validação Pydantic."""
@@ -61,7 +62,7 @@ def _normalize_raw(data: dict[str, Any]) -> dict[str, Any]:
 
 def _parse_json(raw_response: str) -> dict[str, Any]:
     """
-    Realiza o parse 
+    Realiza o parse
 
     Args:
         raw_response (str): _description_
@@ -73,7 +74,7 @@ def _parse_json(raw_response: str) -> dict[str, Any]:
         dict[str, Any]: _description_
     """
     try:
-        return json.loads(raw_response)
+        return cast("dict[str, Any]", json.loads(raw_response))
     except json.JSONDecodeError as e:
         raise ValueError(f"JSON_PARSE_ERROR: {e}") from e
 
@@ -100,13 +101,14 @@ def parse_and_validate(raw_response: str) -> Report:
 
     return _validate_report(data, "Schema inválido após normalização")
 
+
 def detect_conflict(context_text: str | None, report: Report) -> tuple[bool, str]:
     """
     Detecta conflito entre context_text e o relatório gerado.
     Heurística MVP: verifica sobreposição entre palavras do contexto e nomes de componentes.
     Returns: (conflict_detected, conflict_decision)
 
-    Detecta conflitos entre o texto de contexto fornecido e os componentes identificados no 
+    Detecta conflitos entre o texto de contexto fornecido e os componentes identificados no
     relatório.
     Retorna True se um conflito for detectado, False caso contrário.
     """
@@ -121,8 +123,11 @@ def detect_conflict(context_text: str | None, report: Report) -> tuple[bool, str
     if not overlap and len(component_names) > 0 and len(words_in_context) > 5:
         logger.warning(
             "Possível conflito detectado",
-            extra={"event": "conflict_detected", "conflict_policy": "DIAGRAM_FIRST", 
-                   "conflict_decision": "DIAGRAM_FIRST"},
+            extra={
+                "event": "conflict_detected",
+                "conflict_policy": "DIAGRAM_FIRST",
+                "conflict_decision": "DIAGRAM_FIRST",
+            },
         )
         return True, "DIAGRAM_FIRST"
 

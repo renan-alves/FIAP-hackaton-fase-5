@@ -4,75 +4,69 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.135.3-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 
-Repositório do projeto da FIAP Hackathon Fase 5, com foco em análise automatizada de diagramas de arquitetura usando IA.
+Repositório do projeto da FIAP Hackathon Fase 5, com foco em análise automatizada de diagramas de arquitetura por IA.
 
-O núcleo atual é o módulo [ai_module](ai_module), responsável por receber diagramas (imagem ou PDF), executar um pipeline multimodal com LLM e retornar um relatório técnico estruturado em JSON.
+O módulo principal é [ai_module](ai_module), um microserviço FastAPI que recebe diagramas (imagem ou PDF), executa um pipeline multimodal com LLM e retorna um relatório técnico estruturado em JSON.
 
 > [!IMPORTANT]
-> Este serviço de IA não faz persistência de dados, autenticação nem orquestração de fluxo de negócio. Essas responsabilidades ficam em outros componentes da solução.
+> Este serviço não é responsável por persistência de dados, autenticação ou orquestração de negócio.
 
-## Visão Geral
+## Project Name and Description
 
-- Entrada via API REST: upload de diagrama + `analysis_id` para rastreabilidade.
-- Pré-processamento de arquivo: validação de tipo real, tamanho e conversão de PDF para imagem.
-- Análise com provedor LLM configurável (`gemini` ou `openai`).
-- Validação de saída com schema rígido usando Pydantic.
-- Resposta padronizada contendo resumo, componentes, riscos e recomendações.
+- Nome do projeto: FIAP Hackathon Fase 5
+- Propósito principal: análise técnica automatizada de diagramas de arquitetura usando IA
+- Escopo funcional: validação de entrada, pré-processamento de arquivos, análise por LLM, validação estrita de saída e resposta estruturada para integração com orquestrador
 
-## Estrutura do Repositório
+## Technology Stack
+
+Versões consolidadas a partir de [ai_module/pyproject.toml](ai_module/pyproject.toml) e [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md):
+
+- Python: >=3.11,<3.14
+- FastAPI: 0.135.3
+- Pydantic: 2.12.5
+- pydantic-settings: 2.13.1
+- Uvicorn: 0.44.0
+- OpenAI SDK: 2.30.0
+- Google GenAI SDK: >=1.0.0,<2.0.0
+- Pillow: 12.2.0
+- PyMuPDF: 1.27.2.2
+- python-json-logger: 4.1.0
+- python-multipart: 0.0.24
+- httpx: 0.28.1
+- Qualidade: Ruff 0.15.9, MyPy 1.20.0
+- Testes: pytest 9.0.2, pytest-asyncio 1.3.0, pytest-cov 7.1.0
+- Infra local: Docker e Docker Compose
+
+## Project Architecture
+
+O módulo de IA segue um estilo de microserviço com separação em camadas:
+
+- API: entrada HTTP, composição de rotas e contrato de resposta
+- Core: regras de negócio, pipeline, validações, métricas, configuração e logging
+- Adapters: integração com provedores LLM via contrato comum
+- Models: schemas Pydantic para requests, responses e enums
+
+Fluxo de alto nível:
 
 ```text
-.
-├── ai_module/          # Serviço principal de IA (FastAPI)
-├── docs/               # Documentação complementar
-├── infra/              # Artefatos de containerização e compose
-├── specs/              # Especificações e plano de implementação
-└── README.md
+Cliente -> /analyze (API)
+	-> preprocessamento e validações (core)
+	-> prompt + chamada LLM (adapters)
+	-> validação/normalização de resposta (core/models)
+	-> resposta JSON estruturada
 ```
 
-## Escopo Funcional do Módulo de IA
+Referência de arquitetura e padrões: [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md)
 
-- Recebe arquivos `.png`, `.jpg`, `.jpeg` e `.pdf`.
-- Processa a primeira página de PDF.
-- Aplica guardrails de entrada e saída.
-- Entrega relatório estruturado no formato esperado pelo orquestrador.
-- Expõe endpoints de health e métricas para operação.
+## Getting Started
 
-## API Principal
-
-### `POST /analyze`
-
-`multipart/form-data` com:
-
-- `file` (obrigatório)
-- `analysis_id` (obrigatório, UUID)
-
-Resposta de sucesso:
-
-- `analysis_id`
-- `status`
-- `report` (summary, components, risks, recommendations)
-- `metadata` (modelo, tempo de processamento e tipo de entrada)
-
-### `GET /health`
-
-- `200` quando saudável
-- `503` em modo degradado (por exemplo, chave de API ausente)
-
-### `GET /metrics`
-
-Retorna métricas em formato Prometheus.
-
-## Execução Rápida
-
-### 1. Ambiente local (sem Docker)
-
-Pré-requisitos:
+### Pré-requisitos
 
 - Python 3.11+
-- [uv](https://github.com/astral-sh/uv)
+- uv
+- Docker e Docker Compose (opcional)
 
-Comandos:
+### Execução local
 
 ```bash
 cd ai_module
@@ -80,44 +74,119 @@ uv sync
 uv run uvicorn ai_module.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Acesse:
-
-- `http://localhost:8000/docs`
-- `http://localhost:8000/health`
-- `http://localhost:8000/metrics`
-
-### 2. Execução com Docker Compose
-
-Na raiz do repositório:
+### Execução com Docker Compose
 
 ```bash
 docker compose -f infra/compose.yaml up --build
 ```
 
-> [!NOTE]
-> Crie o arquivo `ai_module/.env` com as variáveis necessárias antes de subir o serviço.
+### Configuração
 
-## Configuração Essencial
+Crie o arquivo ai_module/.env a partir de [ai_module/.env-exemplo](ai_module/.env-exemplo) e configure, no mínimo:
 
-As variáveis mais importantes do módulo estão em [ai_module/.env-exemplo](ai_module/.env-exemplo):
+- LLM_PROVIDER (gemini ou openai)
+- LLM_MODEL
+- GEMINI_API_KEY
+- OPENAI_API_KEY
+- MAX_FILE_SIZE_MB
+- LLM_TIMEOUT_SECONDS
+- LLM_MAX_RETRIES
+- LOG_LEVEL
 
-- `LLM_PROVIDER` (`gemini` ou `openai`)
-- `LLM_MODEL`
-- `GEMINI_API_KEY`
-- `OPENAI_API_KEY`
-- `MAX_FILE_SIZE_MB`
-- `LLM_TIMEOUT_SECONDS`
-- `LLM_MAX_RETRIES`
-- `LOG_LEVEL`
+### Endpoints principais
 
-## Qualidade e Testes
+- POST /analyze
+- GET /health
+- GET /metrics
 
-Dentro de [ai_module](ai_module):
+## Project Structure
+
+```text
+.
+├── ai_module/                # Serviço principal de IA (FastAPI)
+│   ├── src/ai_module/api/    # Rotas e camada HTTP
+│   ├── src/ai_module/core/   # Pipeline, validação, settings, métricas, logger
+│   ├── src/ai_module/adapters/ # Integrações Gemini/OpenAI
+│   ├── src/ai_module/models/ # Schemas Pydantic
+│   └── tests/                # Unit e integration tests
+├── docs/                     # Especificações e documentação complementar
+├── infra/                    # Dockerfile e compose
+└── README.md
+```
+
+## Key Features
+
+- Suporte a PNG, JPG, JPEG e PDF
+- Conversão das primeiras 3 páginas de PDF para imagens normalizadas
+- Pipeline com provedor LLM configurável (Gemini/OpenAI)
+- Validação de saída contra schema rígido
+- Guardrails de entrada e saída
+- Observabilidade com logs estruturados e métricas Prometheus
+- Health check com sinalização de modo degradado
+
+## Development Workflow
+
+Fluxo recomendado para desenvolvimento local:
+
+1. Sincronizar dependências com uv
+2. Executar serviço em modo reload
+3. Implementar mudanças preservando os limites de camada (api/core/adapters/models)
+4. Rodar lint, tipagem e testes antes de merge
+
+Comandos úteis em [ai_module](ai_module):
 
 ```bash
-uv run pytest
-uv run pytest --cov --cov-report=term-missing
 uv run ruff check .
 uv run mypy src
+uv run pytest
+uv run pytest --cov --cov-report=term-missing
 ```
+
+Observação: não há estratégia de branching formal documentada neste repositório.
+
+## Coding Standards
+
+Padrões principais de código, consolidados de [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md):
+
+- Compatibilidade estrita com Python 3.11+
+- Uso consistente de type hints
+- Uso de APIs Pydantic v2
+- Lógica de negócio fora das rotas
+- Exceções de domínio mapeadas centralmente para HTTP
+- Logging estruturado com campos event e details
+- Consistência com padrões existentes acima de recomendações externas
+
+## Testing
+
+Estratégia atual:
+
+- Framework: pytest
+- Assíncrono: pytest-asyncio
+- Cobertura: pytest-cov
+- Organização: testes unitários e de integração em ai_module/tests
+- Fixtures compartilhadas em tests/conftest.py
+
+Comandos:
+
+```bash
+cd ai_module
+uv run pytest
+uv run pytest --cov --cov-report=term-missing
+```
+
+## Contributing
+
+Para contribuir com segurança e consistência:
+
+1. Leia as diretrizes em [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md)
+2. Mantenha a separação de responsabilidades entre api, core, adapters e models
+3. Reutilize padrões existentes de validação, logging e tratamento de erros
+4. Inclua ou atualize testes quando houver mudança de comportamento
+5. Execute lint, tipagem e testes antes de abrir PR
+
+No momento, o diretório [.github/copilot](.github/copilot) contém somente [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md), que funciona como fonte primária de padrões do projeto.
+
+## License
+
+Não há arquivo de licença explícito no repositório até o momento.
 

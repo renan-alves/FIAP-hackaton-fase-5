@@ -5,7 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import cast
 
-import fitz   # PyMuPDF
+import fitz  # type: ignore[import-untyped]  # PyMuPDF has no stubs
 from PIL import Image
 
 from ai_module.core.exceptions import InvalidInputError, UnsupportedFormatError
@@ -37,7 +37,8 @@ def _validate_size(file_bytes: bytes) -> None:
     """Gera um InvalidInputError se o arquivo exceder MAX_FILE_SIZE_MB."""
     limit = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     if len(file_bytes) > limit:
-        raise InvalidInputError(f"O tamanho do arquivo excede o limite de {settings.MAX_FILE_SIZE_MB} MB.")
+        msg = f"O tamanho do arquivo excede o limite de {settings.MAX_FILE_SIZE_MB} MB."
+        raise InvalidInputError(msg)
 
 
 def _pdf_to_image(file_bytes: bytes) -> bytes:
