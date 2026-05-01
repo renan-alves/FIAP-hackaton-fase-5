@@ -174,18 +174,6 @@ uv run pytest
 uv run pytest --cov --cov-report=term-missing
 ```
 
-## Contributing
-
-Para contribuir com segurança e consistência:
-
-1. Leia as diretrizes em [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md)
-2. Mantenha a separação de responsabilidades entre api, core, adapters e models
-3. Reutilize padrões existentes de validação, logging e tratamento de erros
-4. Inclua ou atualize testes quando houver mudança de comportamento
-5. Execute lint, tipagem e testes antes de abrir PR
-
-No momento, o diretório [.github/copilot](.github/copilot) contém somente [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md), que funciona como fonte primária de padrões do projeto.
-
 ## License
 
 Não há arquivo de licença explícito no repositório até o momento.
