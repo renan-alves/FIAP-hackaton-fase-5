@@ -13,6 +13,11 @@ from fastapi.responses import JSONResponse, Response
 from ai_module.adapters.rabbitmq_adapter import RabbitMQAdapter
 from ai_module.api.routes import router
 from ai_module.core.exceptions import (
+    ERR_AI_FAILURE,
+    ERR_AI_TIMEOUT,
+    ERR_INTERNAL_ERROR,
+    ERR_INVALID_INPUT,
+    ERR_UNSUPPORTED_FORMAT,
     AIFailureError,
     AITimeoutError,
     InvalidInputError,
@@ -21,7 +26,7 @@ from ai_module.core.exceptions import (
 from ai_module.core.logger import get_logger
 from ai_module.core.metrics import metrics
 from ai_module.core.settings import settings
-from ai_module.core.state import set_queue_health, set_service_health
+from ai_module.core.state import set_queue_health, set_rabbitmq_adapter, set_service_health
 from ai_module.models.report import ErrorResponse
 from ai_module.worker import MessageConsumer, RabbitMQResultPublisher
 
@@ -78,6 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             await adapter.connect()
             set_queue_health(True)
+            set_rabbitmq_adapter(adapter)
 
             publisher = RabbitMQResultPublisher(adapter)
             consumer = MessageConsumer(adapter=adapter, publisher=publisher)
@@ -93,6 +99,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 extra={"event": "worker_start_failed", "error": str(exc)},
             )
             set_queue_health(False)
+            set_service_health(False)
 
     if healthy:
         logger.info(
@@ -119,6 +126,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             pass
     if adapter is not None:
         await adapter.disconnect()
+    set_rabbitmq_adapter(None)
     set_queue_health(False)
 
     logger.info("Application shutdown")
@@ -176,7 +184,7 @@ async def unsupported_format_handler(request: Request, exc: UnsupportedFormatErr
         content=ErrorResponse(
             analysis_id=_get_analysis_id(request),
             status="error",
-            error_code="UNSUPPORTED_FORMAT",
+            error_code=ERR_UNSUPPORTED_FORMAT,
             message=exc.message,
         ).model_dump(),
     )
@@ -199,7 +207,7 @@ async def invalid_input_handler(request: Request, exc: InvalidInputError) -> JSO
         content=ErrorResponse(
             analysis_id=_get_analysis_id(request),
             status="error",
-            error_code="INVALID_INPUT",
+            error_code=ERR_INVALID_INPUT,
             message=exc.message,
         ).model_dump(),
     )
@@ -222,7 +230,7 @@ async def ai_failure_handler(request: Request, exc: AIFailureError) -> JSONRespo
         content=ErrorResponse(
             analysis_id=_get_analysis_id(request),
             status="error",
-            error_code="AI_FAILURE",
+            error_code=ERR_AI_FAILURE,
             message=exc.message,
         ).model_dump(),
     )
@@ -245,7 +253,7 @@ async def timeout_handler(request: Request, exc: AITimeoutError) -> JSONResponse
         content=ErrorResponse(
             analysis_id=_get_analysis_id(request),
             status="error",
-            error_code="AI_TIMEOUT",
+            error_code=ERR_AI_TIMEOUT,
             message=exc.message,
         ).model_dump(),
     )
@@ -265,7 +273,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
         content=ErrorResponse(
             analysis_id=_get_analysis_id(request),
             status="error",
-            error_code="AI_FAILURE",
+            error_code=ERR_INTERNAL_ERROR,
             message="An unexpected error occurred. Please try again.",
         ).model_dump(),
     )

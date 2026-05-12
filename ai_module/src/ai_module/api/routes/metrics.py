@@ -57,5 +57,9 @@ def metrics_endpoint() -> str:
         "# HELP queue_publish_failures_total Total de falhas de publicação na fila",
         "# TYPE queue_publish_failures_total counter",
         f"queue_publish_failures_total {_metrics.publish_failures}",
+        "# HELP queue_results_published_total Total de resultados publicados na fila por status",
+        "# TYPE queue_results_published_total counter",
+        f'queue_results_published_total{{status="success"}} {_metrics.results_published}',
+        f'queue_results_published_total{{status="error"}} {_metrics.errors_published}',
     ]
     return "\n".join(lines) + "\n"

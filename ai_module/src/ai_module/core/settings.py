@@ -8,7 +8,7 @@ from __future__ import annotations
 import warnings
 from functools import lru_cache
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # core/settings.py
@@ -44,6 +44,8 @@ class Settings(BaseSettings):
 
     # File constraints
     MAX_FILE_SIZE_MB: int = 10
+    PDF_MAX_PAGES: int = Field(default=3, gt=0, le=10)
+    MAX_IMAGE_SIDE_PX: int = Field(default=2048, gt=0)
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 2
 

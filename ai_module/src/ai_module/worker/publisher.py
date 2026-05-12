@@ -66,8 +66,10 @@ class RabbitMQResultPublisher:
         logger.info(
             "Success result published",
             extra={
-                "event": "result_published_success",
+                "event": "result_published",
                 "analysis_id": response.analysis_id,
+                "status": "success",
+                "queue_name": settings.RABBITMQ_OUTPUT_QUEUE,
             },
         )
 
@@ -92,17 +94,19 @@ class RabbitMQResultPublisher:
         logger.info(
             "Error result published",
             extra={
-                "event": "result_published_error",
+                "event": "result_published",
                 "analysis_id": error.analysis_id,
+                "status": "error",
                 "error_code": error.error_code,
+                "queue_name": settings.RABBITMQ_OUTPUT_QUEUE,
             },
         )
 
     async def _publish(self, body: bytes, analysis_id: str, event_prefix: str) -> None:
         """Publish raw bytes to the output queue with retry logic.
 
-        Uses ``channel.default_exchange`` so no explicit exchange declaration
-        is required — the default exchange routes directly to the queue by name.
+        Declares the named direct exchange and routes via the output queue name
+        as routing key. This matches the topology declared by the consumer.
 
         Args:
             body: UTF-8 encoded JSON message bytes.
@@ -117,12 +121,18 @@ class RabbitMQResultPublisher:
         for attempt in range(_MAX_PUBLISH_ATTEMPTS):
             try:
                 channel: AbstractChannel = await self._adapter.get_channel()
+                # Declare the named direct exchange — passive=False, durable=True.
+                exchange = await channel.declare_exchange(
+                    settings.RABBITMQ_EXCHANGE,
+                    aio_pika.ExchangeType.DIRECT,
+                    durable=True,
+                )
                 message = aio_pika.Message(
                     body=body,
                     delivery_mode=DeliveryMode.PERSISTENT,
                     content_type="application/json",
                 )
-                await channel.default_exchange.publish(
+                await exchange.publish(
                     message,
                     routing_key=settings.RABBITMQ_OUTPUT_QUEUE,
                 )
@@ -132,10 +142,12 @@ class RabbitMQResultPublisher:
                 logger.warning(
                     "Publish attempt failed",
                     extra={
-                        "event": f"{event_prefix}_attempt_failed",
+                        "event": "publish_attempt_failed",
                         "analysis_id": analysis_id,
                         "attempt": attempt + 1,
                         "error": str(exc),
+                        "error_type": type(exc).__name__,
+                        "queue_name": settings.RABBITMQ_OUTPUT_QUEUE,
                     },
                 )
                 if attempt < _MAX_PUBLISH_ATTEMPTS - 1:
@@ -145,9 +157,13 @@ class RabbitMQResultPublisher:
         logger.error(
             "All publish attempts exhausted",
             extra={
-                "event": f"{event_prefix}_exhausted",
+                "event": "publish_failed",
                 "analysis_id": analysis_id,
-                "attempts": _MAX_PUBLISH_ATTEMPTS,
+                "retry_count": _MAX_PUBLISH_ATTEMPTS,
+                "error": str(last_exc),
+                "error_type": type(last_exc).__name__ if last_exc else "Unknown",
+                "queue_name": settings.RABBITMQ_OUTPUT_QUEUE,
+                "connection_state": "connected" if self._adapter.is_connected else "disconnected",
             },
         )
         raise last_exc  # type: ignore[misc]

@@ -84,12 +84,15 @@ def _make_mock_publisher() -> MagicMock:
 
 
 def _make_mock_adapter() -> MagicMock:
-    """Return a mock RabbitMQAdapter with channel and queue pre-configured."""
+    """Return a mock RabbitMQAdapter with channel, exchange, and queue pre-configured."""
     adapter = MagicMock()
     channel = AsyncMock()
     queue = AsyncMock()
     queue.consume = AsyncMock(return_value="test-consumer-tag")
+    queue.bind = AsyncMock()
+    exchange = AsyncMock()
     channel.declare_queue = AsyncMock(return_value=queue)
+    channel.declare_exchange = AsyncMock(return_value=exchange)
     adapter.get_channel = AsyncMock(return_value=channel)
     return adapter, channel, queue
 
@@ -120,11 +123,49 @@ class TestMessageConsumerStart:
 
         with patch("ai_module.worker.consumer.settings") as mock_settings:
             mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
             mock_settings.LOG_LEVEL = "INFO"
             await consumer.start()
 
         channel.declare_queue.assert_awaited_once_with(
             "analysis.requests", durable=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_start_declares_direct_exchange(self) -> None:
+        """start() declares a durable direct exchange — matches topology spec (T014)."""
+        import aio_pika
+
+        adapter, channel, queue = _make_mock_adapter()
+        consumer = MessageConsumer(adapter=adapter, publisher=_make_mock_publisher())
+
+        with patch("ai_module.worker.consumer.settings") as mock_settings:
+            mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
+            mock_settings.LOG_LEVEL = "INFO"
+            await consumer.start()
+
+        channel.declare_exchange.assert_awaited_once_with(
+            "analysis",
+            aio_pika.ExchangeType.DIRECT,
+            durable=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_start_binds_queue_to_exchange(self) -> None:
+        """start() binds the input queue to the exchange using the queue name as routing key."""
+        adapter, channel, queue = _make_mock_adapter()
+        consumer = MessageConsumer(adapter=adapter, publisher=_make_mock_publisher())
+
+        with patch("ai_module.worker.consumer.settings") as mock_settings:
+            mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
+            mock_settings.LOG_LEVEL = "INFO"
+            await consumer.start()
+
+        queue.bind.assert_awaited_once_with(
+            channel.declare_exchange.return_value,
+            routing_key="analysis.requests",
         )
 
     @pytest.mark.asyncio
@@ -135,6 +176,7 @@ class TestMessageConsumerStart:
 
         with patch("ai_module.worker.consumer.settings") as mock_settings:
             mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
             mock_settings.LOG_LEVEL = "INFO"
             await consumer.start()
 
@@ -149,6 +191,7 @@ class TestMessageConsumerStart:
 
         with patch("ai_module.worker.consumer.settings") as mock_settings:
             mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
             mock_settings.LOG_LEVEL = "INFO"
             await consumer.start()
 
@@ -169,6 +212,7 @@ class TestMessageConsumerStop:
 
         with patch("ai_module.worker.consumer.settings") as mock_settings:
             mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
             mock_settings.LOG_LEVEL = "INFO"
             await consumer.start()
             await consumer.stop()
@@ -183,6 +227,7 @@ class TestMessageConsumerStop:
 
         with patch("ai_module.worker.consumer.settings") as mock_settings:
             mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
             mock_settings.LOG_LEVEL = "INFO"
             await consumer.start()
             await consumer.stop()
@@ -207,6 +252,7 @@ class TestMessageConsumerStop:
 
         with patch("ai_module.worker.consumer.settings") as mock_settings:
             mock_settings.RABBITMQ_INPUT_QUEUE = "analysis.requests"
+            mock_settings.RABBITMQ_EXCHANGE = "analysis"
             mock_settings.LOG_LEVEL = "INFO"
             await consumer.start()
             await consumer.stop()  # should not raise
@@ -513,7 +559,7 @@ class TestHandleMessagePipelineError:
         error: QueueErrorResponse = publisher.publish_error.call_args.args[0]
         assert error.analysis_id == "abc-123"
         assert error.status == "error"
-        assert error.error_code == "PIPELINE_ERROR"
+        assert error.error_code == "INTERNAL_ERROR"
         assert "AI service unavailable" in error.message
 
     @pytest.mark.asyncio

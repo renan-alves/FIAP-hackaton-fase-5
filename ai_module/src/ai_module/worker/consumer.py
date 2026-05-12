@@ -26,6 +26,11 @@ from pydantic import ValidationError
 from ai_module.adapters.factory import get_llm_adapter
 from ai_module.adapters.rabbitmq_adapter import RabbitMQAdapter
 from ai_module.core.exceptions import (
+    ERR_AI_FAILURE,
+    ERR_AI_TIMEOUT,
+    ERR_INTERNAL_ERROR,
+    ERR_INVALID_INPUT,
+    ERR_UNSUPPORTED_FORMAT,
     AIFailureError,
     AITimeoutError,
     InvalidInputError,
@@ -86,17 +91,28 @@ class MessageConsumer:
         self._consumer_tag: str | None = None
 
     async def start(self) -> None:
-        """Declare the input queue and begin consuming messages."""
+        """Declare the exchange, bind the input queue, and begin consuming messages."""
+        import aio_pika
+
         self._channel = await self._adapter.get_channel()
+        # Declare the direct exchange so the topology matches the publisher.
+        exchange = await self._channel.declare_exchange(
+            settings.RABBITMQ_EXCHANGE,
+            aio_pika.ExchangeType.DIRECT,
+            durable=True,
+        )
         self._queue = await self._channel.declare_queue(
             settings.RABBITMQ_INPUT_QUEUE,
             durable=True,
         )
+        # Bind the queue to the exchange using the queue name as routing key.
+        await self._queue.bind(exchange, routing_key=settings.RABBITMQ_INPUT_QUEUE)
         self._consumer_tag = await self._queue.consume(self._handle_message)
         logger.info(
             "Consumer started",
             extra={
                 "event": "consumer_started",
+                "exchange": settings.RABBITMQ_EXCHANGE,
                 "queue": settings.RABBITMQ_INPUT_QUEUE,
             },
         )
@@ -203,7 +219,7 @@ class MessageConsumer:
             )
         except (InvalidInputError, UnsupportedFormatError) as exc:
             _error_code = (
-                "INVALID_INPUT" if isinstance(exc, InvalidInputError) else "UNSUPPORTED_FORMAT"
+                ERR_INVALID_INPUT if isinstance(exc, InvalidInputError) else ERR_UNSUPPORTED_FORMAT
             )
             logger.warning(
                 "Pipeline rejected input",
@@ -224,7 +240,11 @@ class MessageConsumer:
             )
             metrics.pipeline_errors += 1
             await self._publisher.publish_error(
-                QueueErrorResponse(analysis_id=analysis_id, error_code="TIMEOUT", message=str(exc))
+                QueueErrorResponse(
+                    analysis_id=analysis_id,
+                    error_code=ERR_AI_TIMEOUT,
+                    message=str(exc),
+                )
             )
             await message.ack()
             return
@@ -236,7 +256,7 @@ class MessageConsumer:
             metrics.pipeline_errors += 1
             await self._publisher.publish_error(
                 QueueErrorResponse(
-                    analysis_id=analysis_id, error_code="AI_FAILURE", message=str(exc)
+                    analysis_id=analysis_id, error_code=ERR_AI_FAILURE, message=str(exc)
                 )
             )
             await message.ack()
@@ -254,7 +274,7 @@ class MessageConsumer:
             error_response = QueueErrorResponse(
                 analysis_id=analysis_id,
                 status="error",
-                error_code="PIPELINE_ERROR",
+                error_code=ERR_INTERNAL_ERROR,
                 message=str(exc),
             )
             await self._publisher.publish_error(error_response)

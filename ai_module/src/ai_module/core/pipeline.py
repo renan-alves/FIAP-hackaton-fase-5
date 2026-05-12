@@ -109,7 +109,11 @@ async def run_pipeline(
     )
     total_start = time.monotonic()
 
-    image_bytes, input_type = _step_preprocess(file_bytes, filename, analysis_id)
+    image_bytes, input_type, downsampling_applied = _step_preprocess(
+        file_bytes,
+        filename,
+        analysis_id,
+    )
     system_prompt, user_prompt = _step_build_prompts(image_bytes, analysis_id, context_text)
     report, _flags, successful_attempt = await _step_retry_loop(
         adapter,
@@ -143,6 +147,7 @@ async def run_pipeline(
         context_text,
         conflict_detected,
         conflict_decision,
+        downsampling_applied,
     )
 
 
@@ -233,7 +238,7 @@ def _step_preprocess(
     file_bytes: bytes,
     filename: str,
     analysis_id: str,
-) -> tuple[bytes, str]:
+) -> tuple[bytes, str, bool]:
     """Valida e normaliza o arquivo enviado para uma imagem PNG.
 
     Delega a :func:`~ai_module.core.preprocessor.preprocess` para
@@ -250,9 +255,10 @@ def _step_preprocess(
 
     Returns
     -------
-    tuple[bytes, str]
-        ``(image_bytes, input_type)`` onde *image_bytes* é o PNG
-        normalizado e *input_type* é ``"image"`` ou ``"pdf"``.
+    tuple[bytes, str, bool]
+        ``(image_bytes, input_type, downsampling_applied)`` onde *image_bytes* é o PNG
+        normalizado, *input_type* é ``"image"`` ou ``"pdf"``, e *downsampling_applied*
+        indica se a imagem foi redimensionada.
 
     Raises
     ------
@@ -271,7 +277,10 @@ def _step_preprocess(
     )
     pre_start = time.monotonic()
     try:
-        image_bytes, input_type = preprocess(file_bytes)
+        result = preprocess(file_bytes)
+        image_bytes = result.image_bytes
+        input_type = result.input_type
+        downsampling_applied = result.downsampling_applied
     except (UnsupportedFormatError, InvalidInputError) as e:
         logger.error(
             "Preprocessing failed",
@@ -302,7 +311,7 @@ def _step_preprocess(
             },
         },
     )
-    return image_bytes, input_type
+    return image_bytes, input_type, downsampling_applied
 
 
 def _step_build_prompts(
@@ -627,6 +636,7 @@ def _build_response(
     context_text: str | None,
     conflict_detected: bool,
     conflict_decision: str,
+    downsampling_applied: bool = False,
 ) -> AnalyzeResponse:
     """Monta a resposta final da API com o relatório e metadados.
 
@@ -640,6 +650,8 @@ def _build_response(
         Tipo original do arquivo (``"image"`` ou ``"pdf"``).
     total_ms : int
         Tempo total de parede do pipeline em milissegundos.
+    downsampling_applied : bool
+        True se a imagem foi redimensionada antes de ser enviada ao LLM.
 
     Returns
     -------
@@ -656,7 +668,7 @@ def _build_response(
             input_type=input_type,  # type: ignore[arg-type]
             context_text_provided=bool(context_text),
             context_text_length=len(context_text or ""),
-            downsampling_applied=False,
+            downsampling_applied=downsampling_applied,
             conflict_detected=conflict_detected,
             conflict_decision=conflict_decision,
             conflict_policy=settings.CONFLICT_POLICY,

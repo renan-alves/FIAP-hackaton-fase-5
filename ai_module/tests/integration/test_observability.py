@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import status
@@ -36,10 +38,47 @@ def test_health_degraded_response_schema(client: TestClient) -> None:
         set_service_health(True)
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    detail = response.json()["detail"]
-    assert detail["status"] == "degraded"
-    assert "llm_provider" in detail
-    assert isinstance(detail["llm_provider"], str)
+    body = response.json()
+    # Body must be top-level — not nested under "detail"
+    assert "detail" not in body
+    assert body["status"] == "degraded"
+    assert "llm_provider" in body
+    assert isinstance(body["llm_provider"], str)
+
+
+def test_health_degraded_body_is_top_level_not_detail_wrapped(client: TestClient) -> None:
+    """AC-009: Degraded health response MUST use top-level JSON, never HTTPException detail."""
+    set_service_health(False)
+    try:
+        response = client.get("/health")
+    finally:
+        set_service_health(True)
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    body = response.json()
+    assert "detail" not in body, "Body must not be wrapped under 'detail' key"
+    assert body.get("status") == "degraded"
+    assert "version" in body
+    assert "queue_connected" in body
+
+
+def test_health_degraded_when_rabbitmq_startup_fails(client: TestClient) -> None:
+    """AC-009: RabbitMQ startup failure must mark service as degraded (503)."""
+    from ai_module.core.state import set_queue_health, set_service_health
+
+    # Simulate: RabbitMQ connect failed → both queue and service marked unhealthy
+    set_queue_health(False)
+    set_service_health(False)
+    try:
+        response = client.get("/health")
+    finally:
+        set_service_health(True)
+        set_queue_health(False)  # restore to default disabled state
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["queue_connected"] is False
 
 
 def test_health_recovers_after_degraded(client: TestClient) -> None:
@@ -115,3 +154,127 @@ def test_metrics_reflect_failed_analyze_request(
     )
 
     assert metrics.requests_error == before + 1
+
+
+def test_health_contains_queue_connected_field(client: TestClient) -> None:
+    set_service_health(True)
+
+    response = client.get("/health")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert "queue_connected" in body
+    assert isinstance(body["queue_connected"], bool)
+
+
+def test_metrics_contains_publish_counters(client: TestClient) -> None:
+    response = client.get("/metrics")
+
+    assert response.status_code == status.HTTP_200_OK
+    text = response.text
+    assert "queue_publish_failures_total" in text
+    assert "queue_messages_published_total" in text
+
+
+def test_metrics_contain_labeled_publish_results(client: TestClient) -> None:
+    response = client.get("/metrics")
+
+    assert response.status_code == status.HTTP_200_OK
+    text = response.text
+    assert 'queue_results_published_total{status="success"}' in text
+    assert 'queue_results_published_total{status="error"}' in text
+
+
+async def test_publisher_logs_result_published_on_success(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from ai_module.models.queue import QueueAnalysisResponse
+    from ai_module.worker.publisher import RabbitMQResultPublisher
+
+    mock_adapter = MagicMock()
+    mock_adapter.is_connected = True
+
+    mock_channel = AsyncMock()
+    mock_channel.default_exchange.publish = AsyncMock()
+    mock_adapter.get_channel = AsyncMock(return_value=mock_channel)
+
+    from ai_module.models.report import Component, ComponentType, Report, ReportMetadata
+
+    publisher = RabbitMQResultPublisher(adapter=mock_adapter)
+    response = QueueAnalysisResponse(
+        analysis_id="log-test-01",
+        report=Report(
+            summary="ok",
+            components=[Component(name="svc", type=ComponentType.SERVICE, description="test")],
+        ),
+        metadata=ReportMetadata(
+            model_used="test",
+            processing_time_ms=1,
+            input_type="image",
+        ),
+    )
+
+    pub_logger = logging.getLogger("ai_module.worker.publisher")
+    original_propagate = pub_logger.propagate
+    pub_logger.propagate = True
+    try:
+        with caplog.at_level(logging.INFO, logger="ai_module.worker.publisher"):
+            await publisher.publish_success(response)
+    finally:
+        pub_logger.propagate = original_propagate
+
+    log_extras = [r.__dict__ for r in caplog.records]
+    events = [e.get("event") for e in log_extras]
+    assert "result_published" in events
+
+    success_record = next(
+        r for r in caplog.records if r.__dict__.get("event") == "result_published"
+    )
+    assert success_record.__dict__.get("status") == "success"
+    assert "queue_name" in success_record.__dict__
+
+
+async def test_publisher_logs_publish_failed_event(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from ai_module.models.queue import QueueAnalysisResponse
+    from ai_module.models.report import Component, ComponentType, Report, ReportMetadata
+    from ai_module.worker.publisher import RabbitMQResultPublisher
+
+    mock_adapter = MagicMock()
+    mock_adapter.is_connected = False
+    mock_adapter.get_channel = AsyncMock(side_effect=ConnectionError("broker down"))
+
+    publisher = RabbitMQResultPublisher(adapter=mock_adapter)
+    response = QueueAnalysisResponse(
+        analysis_id="log-test-02",
+        report=Report(
+            summary="ok",
+            components=[Component(name="svc", type=ComponentType.SERVICE, description="test")],
+        ),
+        metadata=ReportMetadata(
+            model_used="test",
+            processing_time_ms=1,
+            input_type="image",
+        ),
+    )
+
+    pub_logger = logging.getLogger("ai_module.worker.publisher")
+    original_propagate = pub_logger.propagate
+    pub_logger.propagate = True
+    try:
+        with caplog.at_level(logging.WARNING, logger="ai_module.worker.publisher"):
+            with pytest.raises(ConnectionError):
+                await publisher.publish_success(response)
+    finally:
+        pub_logger.propagate = original_propagate
+
+    log_extras = [r.__dict__ for r in caplog.records]
+    events = [e.get("event") for e in log_extras]
+    assert "publish_attempt_failed" in events
+
+    failed_record = next(
+        r for r in caplog.records if r.__dict__.get("event") == "publish_attempt_failed"
+    )
+    assert "error_type" in failed_record.__dict__
+    assert "queue_name" in failed_record.__dict__

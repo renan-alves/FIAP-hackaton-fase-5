@@ -60,11 +60,11 @@ def _make_error_response() -> QueueErrorResponse:
 def _make_publisher() -> tuple[RabbitMQResultPublisher, AsyncMock, AsyncMock]:
     """Return (publisher, mock_adapter, mock_exchange_publish)."""
     mock_publish = AsyncMock()
-    mock_default_exchange = MagicMock()
-    mock_default_exchange.publish = mock_publish
+    mock_exchange = MagicMock()
+    mock_exchange.publish = mock_publish
 
     mock_channel = MagicMock()
-    mock_channel.default_exchange = mock_default_exchange
+    mock_channel.declare_exchange = AsyncMock(return_value=mock_exchange)
 
     mock_adapter = AsyncMock()
     mock_adapter.get_channel = AsyncMock(return_value=mock_channel)
@@ -231,11 +231,11 @@ async def test_publish_succeeds_on_second_attempt():
     mock_publish = AsyncMock(
         side_effect=[RuntimeError("transient failure"), None]
     )
-    mock_default_exchange = MagicMock()
-    mock_default_exchange.publish = mock_publish
+    mock_exchange = MagicMock()
+    mock_exchange.publish = mock_publish
 
     mock_channel = MagicMock()
-    mock_channel.default_exchange = mock_default_exchange
+    mock_channel.declare_exchange = AsyncMock(return_value=mock_exchange)
 
     mock_adapter = AsyncMock()
     mock_adapter.get_channel = AsyncMock(return_value=mock_channel)
@@ -257,11 +257,11 @@ async def test_publish_all_attempts_fail_raises():
     from ai_module.worker.publisher import _MAX_PUBLISH_ATTEMPTS
 
     mock_publish = AsyncMock(side_effect=RuntimeError("persistent failure"))
-    mock_default_exchange = MagicMock()
-    mock_default_exchange.publish = mock_publish
+    mock_exchange = MagicMock()
+    mock_exchange.publish = mock_publish
 
     mock_channel = MagicMock()
-    mock_channel.default_exchange = mock_default_exchange
+    mock_channel.declare_exchange = AsyncMock(return_value=mock_exchange)
 
     mock_adapter = AsyncMock()
     mock_adapter.get_channel = AsyncMock(return_value=mock_channel)
@@ -278,11 +278,11 @@ async def test_publish_all_attempts_fail_raises():
 async def test_publish_all_attempts_fail_increments_publish_failures():
     """Exhausting all retries must increment metrics.publish_failures by 1."""
     mock_publish = AsyncMock(side_effect=RuntimeError("persistent failure"))
-    mock_default_exchange = MagicMock()
-    mock_default_exchange.publish = mock_publish
+    mock_exchange = MagicMock()
+    mock_exchange.publish = mock_publish
 
     mock_channel = MagicMock()
-    mock_channel.default_exchange = mock_default_exchange
+    mock_channel.declare_exchange = AsyncMock(return_value=mock_exchange)
 
     mock_adapter = AsyncMock()
     mock_adapter.get_channel = AsyncMock(return_value=mock_channel)
@@ -300,11 +300,11 @@ async def test_publish_all_attempts_fail_increments_publish_failures():
 async def test_publish_all_attempts_fail_does_not_increment_results_published():
     """Failed publishes must not increment metrics.results_published."""
     mock_publish = AsyncMock(side_effect=RuntimeError("fail"))
-    mock_default_exchange = MagicMock()
-    mock_default_exchange.publish = mock_publish
+    mock_exchange = MagicMock()
+    mock_exchange.publish = mock_publish
 
     mock_channel = MagicMock()
-    mock_channel.default_exchange = mock_default_exchange
+    mock_channel.declare_exchange = AsyncMock(return_value=mock_exchange)
 
     mock_adapter = AsyncMock()
     mock_adapter.get_channel = AsyncMock(return_value=mock_channel)
@@ -322,11 +322,11 @@ async def test_publish_all_attempts_fail_does_not_increment_results_published():
 async def test_error_publish_all_attempts_fail_increments_publish_failures():
     """Exhausting all retries on publish_error must also increment publish_failures."""
     mock_publish = AsyncMock(side_effect=RuntimeError("fail"))
-    mock_default_exchange = MagicMock()
-    mock_default_exchange.publish = mock_publish
+    mock_exchange = MagicMock()
+    mock_exchange.publish = mock_publish
 
     mock_channel = MagicMock()
-    mock_channel.default_exchange = mock_default_exchange
+    mock_channel.declare_exchange = AsyncMock(return_value=mock_exchange)
 
     mock_adapter = AsyncMock()
     mock_adapter.get_channel = AsyncMock(return_value=mock_channel)
