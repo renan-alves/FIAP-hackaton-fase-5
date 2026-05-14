@@ -19,7 +19,7 @@ O módulo principal é [ai_module](ai_module), um microserviço FastAPI que rece
 
 ## Technology Stack
 
-Versões consolidadas a partir de [ai_module/pyproject.toml](ai_module/pyproject.toml) e [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md):
+
 
 - Python: >=3.11,<3.14
 - FastAPI: 0.135.3
@@ -56,7 +56,7 @@ Cliente -> /analyze (API)
 	-> resposta JSON estruturada
 ```
 
-Referência de arquitetura e padrões: [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md)
+
 
 ## Getting Started
 
@@ -162,7 +162,7 @@ Observação: não há estratégia de branching formal documentada neste reposit
 
 ## Coding Standards
 
-Padrões principais de código, consolidados de [.github/copilot/copilot-instructions.md](.github/copilot/copilot-instructions.md):
+
 
 - Compatibilidade estrita com Python 3.11+
 - Uso consistente de type hints
