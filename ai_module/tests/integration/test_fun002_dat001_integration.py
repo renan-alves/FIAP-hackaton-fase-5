@@ -19,7 +19,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
@@ -236,7 +235,9 @@ def test_multiple_requests_with_different_analysis_ids(
     for expected_id, response in responses:
         assert response.status_code == status.HTTP_200_OK
         body = response.json()
-        assert body["analysis_id"] == expected_id, f"Expected {expected_id}, got {body.get('analysis_id')}"
+        assert body["analysis_id"] == expected_id, (
+            f"Expected {expected_id}, got {body.get('analysis_id')}"
+        )
 
 
 def test_analysis_id_with_uuid_v1_format(

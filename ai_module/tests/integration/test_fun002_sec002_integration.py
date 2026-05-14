@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
@@ -101,8 +100,7 @@ def test_malformed_file_upload_is_rejected_before_pipeline(
     
     # If 200, verify it's an error response
     if response.status_code == status.HTTP_200_OK:
-        body = response.json()
-        # May return error status if corrupted file is detected in pipeline
+        response.json()  # May return error status if corrupted file is detected in pipeline
         # This is acceptable as long as it's handled securely
 
 

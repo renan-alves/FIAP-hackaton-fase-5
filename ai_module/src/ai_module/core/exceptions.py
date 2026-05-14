@@ -7,6 +7,44 @@ registered in main.py. Never expose internal details in the message
 
 from __future__ import annotations
 
+# ---------------------------------------------------------------------------
+# Shared error-code string constants
+# Use these everywhere (HTTP handlers, queue worker) to prevent drift.
+# ---------------------------------------------------------------------------
+
+ERR_UNSUPPORTED_FORMAT = "UNSUPPORTED_FORMAT"
+ERR_INVALID_INPUT = "INVALID_INPUT"
+ERR_AI_FAILURE = "AI_FAILURE"
+ERR_AI_TIMEOUT = "AI_TIMEOUT"
+ERR_INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+def map_exception_to_error_code(exc: Exception) -> str:
+    """Return the canonical error-code string for a given exception.
+
+    Used by both the HTTP exception handlers in *main.py* and the queue
+    worker in *consumer.py* so that the same exception always produces the
+    same ``error_code`` regardless of which flow raised it.
+    """
+    from ai_module.core.exceptions import (
+        AIFailureError,
+        AITimeoutError,
+        InvalidInputError,
+        LLMCallError,
+        LLMTimeoutError,
+        UnsupportedFormatError,
+    )
+
+    if isinstance(exc, UnsupportedFormatError):
+        return ERR_UNSUPPORTED_FORMAT
+    if isinstance(exc, InvalidInputError):
+        return ERR_INVALID_INPUT
+    if isinstance(exc, (AITimeoutError, LLMTimeoutError)):
+        return ERR_AI_TIMEOUT
+    if isinstance(exc, (AIFailureError, LLMCallError)):
+        return ERR_AI_FAILURE
+    return ERR_INTERNAL_ERROR
+
 
 class UnsupportedFormatError(Exception):
     """Lançada quando o tipo de arquivo enviado não é suportado. → HTTP 422"""

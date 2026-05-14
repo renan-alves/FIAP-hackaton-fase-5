@@ -17,14 +17,10 @@ Test Coverage:
 
 from __future__ import annotations
 
-from io import BytesIO
 from typing import Any
 
-import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
-from PIL import Image
-
 
 # ============================================================================
 # File Parameter Tests (T006-T009)

@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
+import json
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest  # type: ignore
+from PIL import Image
 
 from ai_module.core.exceptions import AIFailureError, AITimeoutError, LLMTimeoutError
 from ai_module.core.pipeline import run_pipeline
 from ai_module.core.settings import settings
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_large_png(side: int) -> bytes:
+    """Return a PNG larger than MAX_IMAGE_SIDE_PX on both axes."""
+    img = Image.new("RGB", (side, side), color=(10, 20, 30))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 @pytest.mark.asyncio
@@ -122,3 +137,72 @@ async def test_run_pipeline_includes_conflict_decision_for_context(
     assert response.metadata.conflict_detected is True
     assert response.metadata.conflict_decision == "DIAGRAM_FIRST"
     assert response.metadata.conflict_policy == "DIAGRAM_FIRST"
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_threads_downsampling_applied_flag(
+    mock_adapter: SimpleNamespace,
+) -> None:
+    """downsampling_applied=True must be propagated to response.metadata when the
+    preprocessor reports that the image was resized."""
+    large_png = _make_large_png(settings.MAX_IMAGE_SIDE_PX + 500)
+
+    response = await run_pipeline(large_png, "large.png", "analysis-downsample", mock_adapter)
+
+    assert response.metadata.downsampling_applied is True
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_downsampling_false_for_small_image(
+    png_bytes: bytes,
+    mock_adapter: SimpleNamespace,
+) -> None:
+    """downsampling_applied must be False when the image does not exceed the threshold."""
+    response = await run_pipeline(png_bytes, "small.png", "analysis-no-downsample", mock_adapter)
+
+    assert response.metadata.downsampling_applied is False
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_accepts_markdown_fenced_json_response(
+    png_bytes: bytes,
+    valid_report_json: str,
+) -> None:
+    fenced_adapter = SimpleNamespace(
+        analyze=AsyncMock(return_value=f"```json\n{valid_report_json}\n```")
+    )
+
+    response = await run_pipeline(
+        png_bytes,
+        "img.png",
+        "analysis-fenced-json",
+        fenced_adapter,
+    )
+
+    assert response.status == "success"
+    assert response.report.summary.startswith("Arquitetura distribuida")
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_retries_after_invalid_json_then_succeeds_with_fenced_json(
+    png_bytes: bytes,
+    valid_report_json: str,
+) -> None:
+    invalid_then_fenced_adapter = SimpleNamespace(
+        analyze=AsyncMock(
+            side_effect=[
+                "not json",
+                f"```json\n{json.dumps(json.loads(valid_report_json))}\n```",
+            ]
+        )
+    )
+
+    response = await run_pipeline(
+        png_bytes,
+        "img.png",
+        "analysis-retry-fenced",
+        invalid_then_fenced_adapter,
+    )
+
+    assert response.status == "success"
+    assert invalid_then_fenced_adapter.analyze.await_count == 2

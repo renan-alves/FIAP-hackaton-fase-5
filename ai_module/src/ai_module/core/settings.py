@@ -8,7 +8,7 @@ from __future__ import annotations
 import warnings
 from functools import lru_cache
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # core/settings.py
@@ -44,6 +44,8 @@ class Settings(BaseSettings):
 
     # File constraints
     MAX_FILE_SIZE_MB: int = 10
+    PDF_MAX_PAGES: int = Field(default=3, gt=0, le=10)
+    MAX_IMAGE_SIDE_PX: int = Field(default=2048, gt=0)
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 2
 
@@ -55,12 +57,13 @@ class Settings(BaseSettings):
     CONFLICT_POLICY: str = "DIAGRAM_FIRST"
     INCLUDE_CONFLICT_METADATA: bool = True
 
-    RABBITMQ_URL: str = "AMQP://GUEST:GUEST@LOCALHOST:5672/"
-    RABBITMQ_INPUT_QUEUE: str = "ANALYSIS.REQUESTS"
-    RABBITMQ_OUTPUT_QUEUE: str = "ANALYSIS.RESULTS"
-    RABBITMQ_EXCHANGE: str = "ANALYSIS"
+    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+    RABBITMQ_INPUT_QUEUE: str = "analysis.requests"
+    RABBITMQ_OUTPUT_QUEUE: str = "analysis.results"
+    RABBITMQ_EXCHANGE: str = "analysis"
     RABBITMQ_PREFETCH_COUNT: int = 1
     RABBITMQ_RECONNECT_MAX_DELAY_SECONDS: int = 60
+    RABBITMQ_WORKER_ENABLED: bool = False
 
     @field_validator("LLM_PROVIDER")
     @classmethod

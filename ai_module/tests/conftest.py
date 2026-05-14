@@ -33,6 +33,8 @@ def real_diagram_png_bytes() -> bytes:
     image_path = (
         Path(__file__).resolve().parents[2] / "docs" / "tests" / "diagrama_caso_usuario.png"
     )
+    if not image_path.exists():
+        pytest.skip(f"Missing integration asset: {image_path}")
     return image_path.read_bytes()
 
 
@@ -47,6 +49,17 @@ def jpeg_bytes() -> bytes:
 def pdf_bytes() -> bytes:
     doc = fitz.open()
     doc.new_page()
+    buffer = BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def multi_page_pdf_bytes() -> bytes:
+    """A blank 3-page PDF for testing multi-page rendering."""
+    doc = fitz.open()
+    for _ in range(3):
+        doc.new_page()
     buffer = BytesIO()
     doc.save(buffer)
     return buffer.getvalue()

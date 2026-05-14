@@ -186,6 +186,76 @@ class TestAnalyzeErrorContract:
 
         assert resp.json()["analysis_id"] == "contract-error-echo-001"
 
+    def test_unhandled_exception_returns_500_with_internal_error_code(
+        self, client: TestClient
+    ) -> None:
+        """Unhandled/unexpected exceptions must return 500 with error_code='INTERNAL_ERROR'."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from ai_module.adapters.factory import get_llm_adapter
+
+        adapter = SimpleNamespace(analyze=AsyncMock(side_effect=RuntimeError("unexpected")))
+        app.dependency_overrides[get_llm_adapter] = lambda: adapter
+        try:
+            resp = client.post(
+                "/analyze",
+                files={"file": ("diagram.png", _minimal_png(), "image/png")},
+                data={"analysis_id": "contract-internal-001"},
+            )
+        finally:
+            app.dependency_overrides.pop(get_llm_adapter, None)
+
+        assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        body = resp.json()
+        assert body["status"] == "error"
+        assert body["error_code"] == "INTERNAL_ERROR"
+        assert body["analysis_id"] == "contract-internal-001"
+
+
+class TestHealthContract:
+    """Spec §3.3 — GET /health response contract."""
+
+    def test_healthy_returns_200_with_top_level_fields(self, client: TestClient) -> None:
+        """Healthy service returns 200 with top-level status/version/llm_provider fields."""
+        import ai_module.core.state as _state
+
+        original = _state._service_healthy
+        _state._service_healthy = True
+        try:
+            resp = client.get("/health")
+        finally:
+            _state._service_healthy = original
+
+        assert resp.status_code == status.HTTP_200_OK
+        body = resp.json()
+        assert body["status"] == "healthy"
+        assert "version" in body
+        assert "llm_provider" in body
+        assert "queue_connected" in body
+        # Body must be top-level — no "detail" wrapper
+        assert "detail" not in body
+
+    def test_degraded_returns_503_with_top_level_fields(self, client: TestClient) -> None:
+        """Degraded service returns 503 with top-level status (not nested under 'detail')."""
+        import ai_module.core.state as _state
+
+        original = _state._service_healthy
+        _state._service_healthy = False
+        try:
+            resp = client.get("/health")
+        finally:
+            _state._service_healthy = original
+
+        assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        body = resp.json()
+        assert body["status"] == "degraded"
+        assert "version" in body
+        assert "llm_provider" in body
+        assert "queue_connected" in body
+        # Body must be top-level — HTTPException wraps under "detail", JSONResponse does not
+        assert "detail" not in body
+
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,0 +1,25 @@
+# Docker Compose for running integration tests with a live RabbitMQ broker.
+#
+# Usage:
+#   docker compose -f infra/compose.test.yml up -d
+#   cd ai_module && RABBITMQ_URL=amqp://guest:guest@localhost:5672/ pytest tests/
+#   docker compose -f infra/compose.test.yml down
+#
+# Queue topology matches the test defaults (guest/guest, standard queues).
+# Dead-letter routing is configured so NACKed messages go to analysis.requests.dlq.
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    tmpfs:
+      - /var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

@@ -60,21 +60,26 @@ def _normalize_raw(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _strip_markdown_fences(raw: str) -> str:
+    """Strip ```json ... ``` or ``` ... ``` fences that LLMs often wrap responses in."""
+    stripped = raw.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = stripped.splitlines()
+    # Remove opening fence line (e.g. ```json or ```)
+    start = 1
+    # Remove closing fence line if present
+    end = len(lines)
+    if lines[-1].strip() == "```":
+        end = -1
+    return "\n".join(lines[start:end]).strip()
+
+
 def _parse_json(raw_response: str) -> dict[str, Any]:
-    """
-    Realiza o parse
-
-    Args:
-        raw_response (str): _description_
-
-    Raises:
-        ValueError: _description_
-
-    Returns:
-        dict[str, Any]: _description_
-    """
+    """Parse raw LLM response to dict, stripping markdown fences if present."""
+    sanitized = _strip_markdown_fences(raw_response)
     try:
-        return cast("dict[str, Any]", json.loads(raw_response))
+        return cast("dict[str, Any]", json.loads(sanitized))
     except json.JSONDecodeError as e:
         raise ValueError(f"JSON_PARSE_ERROR: {e}") from e
 

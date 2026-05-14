@@ -1,0 +1,36 @@
+{
+  "vhosts": [{ "name": "/" }],
+  "users": [
+    {
+      "name": "admin",
+      "password_hash": "A633bkfRZhnu2Jxqu2sZ45fp39aXNIvNTZuDaBcjf0IAKUaN",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "administrator"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "admin",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "queues": [
+    {
+      "name": "report.request",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "report.response",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ]
+}

@@ -1,4 +1,20 @@
 services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: senhaSegura123
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   ai-module:
     image: ai-module:latest
     build:
@@ -7,18 +23,12 @@ services:
     env_file:
       - path: ../ai_module/.env
         required: false
+    environment:
+      RABBITMQ_URL: amqp://admin:senhaSegura123@rabbitmq:5672/
+      RABBITMQ_INPUT_QUEUE: report.request
+      RABBITMQ_OUTPUT_QUEUE: report.response
     ports:
       - "8000:8000"
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

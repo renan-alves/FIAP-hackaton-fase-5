@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
@@ -390,7 +389,7 @@ def test_api_contract_documentation():
             "context_text": {
                 "type": "string | null",
                 "description": "Additional context for analysis",
-                "validation": f"Optional, max length enforced",
+                "validation": "Optional, max length enforced",
             },
         },
         "success_response": {

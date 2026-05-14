@@ -99,6 +99,22 @@ Crie o arquivo ai_module/.env a partir de [ai_module/.env-exemplo](ai_module/.en
 - GET /health
 - GET /metrics
 
+### Contratos e codigos de erro
+
+- Contratos de mensagens de fila (FUN-010):
+	- `specs/FUN-010-contracts/success-result.json`
+	- `specs/FUN-010-contracts/error-result.json`
+- Codigos de erro normalizados no servico:
+	- `UNSUPPORTED_FORMAT`
+	- `INVALID_INPUT`
+	- `AI_FAILURE`
+	- `AI_TIMEOUT`
+	- `INTERNAL_ERROR`
+- Topologia de mensageria RabbitMQ:
+	- exchange DIRECT `analysis`
+	- fila de entrada `analysis.requests`
+	- fila de saida `analysis.results`
+
 ## Project Structure
 
 ```text

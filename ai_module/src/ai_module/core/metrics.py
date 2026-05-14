@@ -13,6 +13,12 @@ class Metrics:
     requests_error: int = 0
     processing_time_ms_total: int = 0
     llm_retries_total: int = 0
+    messages_consumed: int = 0
+    validation_errors: int = 0
+    pipeline_errors: int = 0
+    results_published: int = 0
+    errors_published: int = 0
+    publish_failures: int = 0
 
 
 metrics = Metrics()

@@ -26,6 +26,7 @@ Este modulo faz parte do projeto FIAP Hackathon Fase 5 e cuida apenas do pipelin
 - [Tutorial - rodando com docker](#tutorial---rodando-com-docker)
 - [Uso rapido da API](#uso-rapido-da-api)
 - [Observabilidade e seguranca](#observabilidade-e-seguranca)
+- [Worker RabbitMQ](#worker-rabbitmq)
 - [Desenvolvimento](#desenvolvimento)
 
 ## Requisitos
@@ -57,6 +58,11 @@ Crie um arquivo `.env` dentro da pasta `ai_module/`.
 | `APP_HOST`            | `0.0.0.0`        | Host de bind da aplicacao                |
 | `APP_PORT`            | `8000`           | Porta HTTP                               |
 | `APP_ENV`             | `dev`            | Ambiente de execucao                     |
+| `RABBITMQ_URL`        | *(vazio)*        | URL de conexao ao broker RabbitMQ        |
+| `RABBITMQ_EXCHANGE`   | `analysis`       | Exchange DIRECT para requests/results    |
+| `RABBITMQ_INPUT_QUEUE` | `analysis.requests` | Fila de entrada de requisicoes          |
+| `RABBITMQ_OUTPUT_QUEUE` | `analysis.results` | Fila de saida de resultados             |
+| `RABBITMQ_WORKER_ENABLED` | `false`      | Habilita o consumer RabbitMQ no startup  |
 
 Exemplo de `.env`:
 
@@ -166,7 +172,9 @@ Codigos de erro principais:
 |----------------------|------|----------------------------------------------|
 | `INVALID_INPUT`      | 422  | Arquivo vazio, corrompido ou acima do limite |
 | `UNSUPPORTED_FORMAT` | 422  | Formato diferente de PNG/JPEG/PDF            |
+| `AI_TIMEOUT`         | 500  | Timeout no provedor LLM apos retries         |
 | `AI_FAILURE`         | 500  | Falha no pipeline de IA apos retries         |
+| `INTERNAL_ERROR`     | 500  | Erro interno nao classificado                |
 
 ### GET /health
 
@@ -186,16 +194,126 @@ Retorna contadores em formato Prometheus.
 
 Metricas expostas em `/metrics`:
 
-- `ai_module_requests_success_total`
-- `ai_module_requests_error_total`
-- `ai_module_processing_time_ms_total`
-- `ai_module_llm_retries_total`
+- `ai_requests_total{status="success|error"}` — requisicoes HTTP ao endpoint `/analyze`
+- `ai_processing_time_ms_avg` — tempo medio de processamento em ms
+- `ai_llm_retries_total` — total de retries do LLM
+- `ai_llm_provider_active{provider="..."}` — provedor ativo (sempre 1)
+- `queue_messages_consumed_total` — mensagens consumidas da fila de entrada
+- `queue_messages_published_total` — total de mensagens publicadas (sucesso + erro)
+- `queue_results_published_total{status="success|error"}` — resultados publicados por status
+- `queue_publish_failures_total` — falhas apos todas as tentativas de publicacao
+- `queue_validation_errors_total` — erros de validacao de schema nas mensagens consumidas
+- `queue_pipeline_errors_total` — erros no pipeline de analise de IA
 
 Headers de seguranca adicionados nas respostas HTTP:
 
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
+
+## Worker RabbitMQ
+
+O servico suporta consumo assincrono de mensagens via RabbitMQ, habilitado pela variavel `RABBITMQ_WORKER_ENABLED=true`.
+
+### Como funciona
+
+1. O `main.py` inicia o `WorkerLifecycle` junto com o FastAPI (evento `startup`).
+2. O `Consumer` se conecta ao broker, declara o exchange DIRECT `analysis`, declara a fila `analysis.requests`, faz bind da fila no exchange e registra o callback.
+3. Para cada mensagem recebida:
+   - Decodifica JSON → valida schema (`QueueAnalysisRequest`)
+   - Decodifica base64 dos bytes do arquivo
+   - Executa o pipeline de IA (`run_pipeline`)
+   - Publica o resultado em `analysis.results` via `Publisher`
+4. Mensagens malformadas (JSON invalido ou schema invalido) sao descartadas sem requeue (NACK).
+5. Erros de pipeline publicam uma resposta de erro na fila de saida e fazem ACK.
+
+### Formatos de mensagem
+
+#### Requisicao (`analysis.requests`)
+
+```json
+{
+  "analysis_id": "550e8400-e29b-41d4-a716-446655440000",
+  "file_bytes_b64": "<base64 do arquivo>",
+  "file_name": "diagram.png",
+  "context_text": "Opcional: texto auxiliar"
+}
+```
+
+#### Resposta de sucesso (`analysis.results`)
+
+```json
+{
+  "analysis_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "success",
+  "report": { "..." },
+  "metadata": { "..." }
+}
+```
+
+#### Resposta de erro (`analysis.results`)
+
+```json
+{
+  "analysis_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "error",
+  "error_code": "INTERNAL_ERROR",
+  "message": "Descricao do erro"
+}
+```
+
+Codigos de erro possiveis:
+
+| `error_code`         | Causa                                                  |
+|----------------------|--------------------------------------------------------|
+| `INVALID_INPUT`      | Input invalido rejeitado pelo pipeline                 |
+| `UNSUPPORTED_FORMAT` | Formato de arquivo nao suportado                       |
+| `AI_TIMEOUT`         | Timeout no LLM ou no pipeline de IA                    |
+| `AI_FAILURE`         | Falha na chamada ao servico de IA                      |
+| `INTERNAL_ERROR`     | Erro nao classificado durante o pipeline               |
+
+Os contratos de mensagem estao definidos em:
+
+- `specs/FUN-010-contracts/success-result.json`
+- `specs/FUN-010-contracts/error-result.json`
+
+### Habilitando o worker
+
+Adicione ao `.env`:
+
+```env
+RABBITMQ_WORKER_ENABLED=true
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+RABBITMQ_EXCHANGE=analysis
+RABBITMQ_INPUT_QUEUE=analysis.requests
+RABBITMQ_OUTPUT_QUEUE=analysis.results
+```
+
+### Publicacao de resultados (Publisher)
+
+O `Publisher` tenta publicar o resultado ate 3 vezes com backoff exponencial (`2^tentativa` segundos entre tentativas). Se todas as tentativas falharem, a excecao `PublishError` e propagada e registrada com campos estruturados:
+
+| Campo              | Descricao                                          |
+|--------------------|----------------------------------------------------|
+| `analysis_id`      | Identificador da analise                           |
+| `event`            | `publish_failed` quando todas as tentativas esgotam |
+| `error_type`       | Tipo da excecao Python                             |
+| `retry_count`      | Numero de tentativas realizadas (sempre 3)         |
+| `queue_name`       | Nome da fila de saida configurada                  |
+| `connection_state` | `connected` ou `disconnected` no momento da falha |
+
+A metrica `queue_publish_failures_total` e incrementada a cada evento de falha total.
+A metrica `queue_results_published_total{status="success|error"}` contabiliza separadamente publicacoes bem-sucedidas de respostas de sucesso e de erro.
+
+### Resolucao de problemas
+
+| Sintoma                              | Causa provavel                        | Solucao                                      |
+|--------------------------------------|---------------------------------------|----------------------------------------------|
+| Worker nao inicia                    | `RABBITMQ_WORKER_ENABLED=false`       | Defina a variavel como `true`                |
+| Conexao recusada                     | RabbitMQ nao esta rodando             | Suba o broker com `docker compose up rabbit` |
+| Mensagens na DLQ                     | JSON invalido ou schema errado        | Valide o payload do publicador               |
+| Respostas de erro com `AI_TIMEOUT`   | LLM demorando mais que o timeout      | Aumente `LLM_TIMEOUT_SECONDS`                |
+| Worker nao publica resultados        | Fila de saida nao declarada           | Verifique `RABBITMQ_OUTPUT_QUEUE`            |
 
 ## Desenvolvimento
 

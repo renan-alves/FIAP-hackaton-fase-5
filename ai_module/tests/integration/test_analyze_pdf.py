@@ -140,3 +140,24 @@ def test_analyze_pdf_missing_analysis_id_returns_422(
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+def test_analyze_multi_page_pdf_returns_success_with_pdf_input_type(
+    client: TestClient,
+    multi_page_pdf_bytes: bytes,
+    mock_adapter: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multi-page PDF must be accepted, rendered without error, and reported as input_type='pdf'."""
+    monkeypatch.setitem(app.dependency_overrides, get_llm_adapter, lambda: mock_adapter)
+
+    response = client.post(
+        "/analyze",
+        data={"analysis_id": "pdf-multi-01"},
+        files={"file": ("multi.pdf", multi_page_pdf_bytes, "application/pdf")},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["metadata"]["input_type"] == "pdf"

@@ -17,8 +17,8 @@ def test_health_returns_503_when_service_is_degraded(client: TestClient) -> None
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     body = response.json()
-    assert body["detail"]["status"] == "degraded"
-    assert "llm_provider" in body["detail"]
+    assert body["status"] == "degraded"
+    assert "llm_provider" in body
 
 
 def test_health_returns_200_when_service_is_healthy(client: TestClient) -> None:
